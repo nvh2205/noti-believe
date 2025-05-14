@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTC/USDT Price Tracker</title>
+    <!-- Thư viện Socket.IO client -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <!-- Thư viện Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #0f1621;
+            color: #fff;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: #1a2332;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
+        .price-display {
+            font-size: 36px;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0 5px 0;
+            padding: 20px;
+            background-color: #1a2332;
+            border-radius: 4px;
+        }
+        .last-update {
+            text-align: center;
+            font-size: 12px;
+            color: #8b98af;
+            margin-bottom: 20px;
+        }
+        .status {
+            text-align: center;
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .connected {
+            background-color: rgba(40, 167, 69, 0.2);
+            color: #28a745;
+        }
+        .disconnected {
+            background-color: rgba(220, 53, 69, 0.2);
+            color: #dc3545;
+        }
+        .details {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .detail-item {
+            background-color: #263142;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .detail-item strong {
+            display: block;
+            margin-bottom: 5px;
+            color: #8b98af;
+        }
+        .detail-item span {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-top: 20px;
+            background-color: #263142;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .up {
+            color: #28a745;
+        }
+        .down {
+            color: #dc3545;
+        }
+        h1 {
+            text-align: center;
+            color: #8b98af;
+        }
+        .time-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .time-button {
+            background-color: #263142;
+            color: #8b98af;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .time-button.active {
+            background-color: #3a4d69;
+            color: white;
+        }
+        .time-button:hover {
+            background-color: #3a4d69;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>BTC/USDT Price Tracker</h1>
+        <div id="status" class="status disconnected">Disconnected</div>
+        <div id="currentPrice" class="price-display">Loading...</div>
+        <div class="last-update">Last updated: </div>
+        <div class="details">
+            <div class="detail-item">
+                <strong>VOLUME</strong>
+                <span id="volume">-</span>
+            </div>
+            <div class="detail-item">
+                <strong>24H HIGH</strong>
+                <span id="high">-</span>
+            </div>
+            <div class="detail-item">
+                <strong>24H LOW</strong>
+                <span id="low">-</span>
+            </div>
+            <div class="detail-item">
+                <strong>OPEN</strong>
+                <span id="open">-</span>
+            </div>
+        </div>
+        
+        <div class="time-buttons">
+            <button class="time-button" data-seconds="10">10S</button>
+            <button class="time-button" data-seconds="30">30S</button>
+            <button class="time-button active" data-seconds="60">1M</button>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="priceChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let socket;
+        let lastPrice = null;
+        let priceChart;
+        let priceData = [];
+        let displaySeconds = 60; // Default to show last 1 minute (60 seconds)
+        
+        // Initialize chart
+        function initChart() {
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'BTC/USDT',
+                        data: [],
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.1,
+                        pointRadius: 1,
+                        pointHoverRadius: 5,
+                        pointHitRadius: 10,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return `$${context.parsed.y.toFixed(2)}`;
+                                }
+                            },
+                            backgroundColor: 'rgba(26, 35, 50, 0.9)',
+                            titleColor: '#8b98af',
+                            bodyColor: '#fff',
+                            borderColor: '#3a4d69',
+                            borderWidth: 1,
+                            padding: 10,
+                            displayColors: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(139, 152, 175, 0.1)',
+                            },
+                            ticks: {
+                                color: '#8b98af',
+                                maxRotation: 0,
+                                maxTicksLimit: 8
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(139, 152, 175, 0.1)',
+                            },
+                            ticks: {
+                                color: '#8b98af',
+                                callback: function(value) {
+                                    return '$' + value.toFixed(0);
+                                },
+                                beginAtZero: false,
+                                grace: '1%'
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    animation: {
+                        duration: 0
+                    }
+                }
+            });
+        }
+        
+        function updateChartData() {
+            if (!priceChart) return;
+            
+            // Calculate time limit based on selected seconds
+            const timeLimit = new Date();
+            timeLimit.setSeconds(timeLimit.getSeconds() - displaySeconds);
+            
+            // Filter data to show only the selected time period
+            const filteredData = priceData.filter(item => new Date(item.timestamp) >= timeLimit);
+            
+            // Update chart data
+            priceChart.data.labels = filteredData.map(item => {
+                const date = new Date(item.timestamp);
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            });
+            
+            priceChart.data.datasets[0].data = filteredData.map(item => item.price);
+            
+            // Auto-scale y-axis for better visibility in short timeframes
+            if (filteredData.length > 1 && displaySeconds <= 30) {
+                const prices = filteredData.map(item => item.price);
+                const min = Math.min(...prices);
+                const max = Math.max(...prices);
+                const padding = (max - min) * 0.1; // 10% padding
+                
+                // Only update if we have enough data or significant price changes
+                if (prices.length >= 5 || max - min > 1) {
+                    priceChart.options.scales.y.min = Math.floor(min - padding);
+                    priceChart.options.scales.y.max = Math.ceil(max + padding);
+                }
+            } else {
+                // For longer timeframes, let Chart.js handle the scaling
+                priceChart.options.scales.y.min = undefined;
+                priceChart.options.scales.y.max = undefined;
+            }
+            
+            // Update colors based on price trend
+            const lastIndex = filteredData.length - 1;
+            if (lastIndex > 0) {
+                const firstPrice = filteredData[0].price;
+                const lastPrice = filteredData[lastIndex].price;
+                
+                if (lastPrice >= firstPrice) {
+                    priceChart.data.datasets[0].borderColor = '#28a745';
+                    priceChart.data.datasets[0].backgroundColor = 'rgba(40, 167, 69, 0.1)';
+                } else {
+                    priceChart.data.datasets[0].borderColor = '#dc3545';
+                    priceChart.data.datasets[0].backgroundColor = 'rgba(220, 53, 69, 0.1)';
+                }
+            }
+            
+            priceChart.update();
+        }
+
+        function connect() {
+            // Initialize chart first
+            initChart();
+            
+            // Connect to Socket.IO
+            socket = io('http://localhost:8014', {
+                transports: ['websocket'],
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 5000
+            });
+
+            // Connection event handling
+            socket.on('connect', () => {
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').textContent = 'Connected';
+                console.log('Connected to Socket.IO server');
+            });
+
+            socket.on('disconnect', () => {
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').textContent = 'Disconnected';
+                console.log('Disconnected from Socket.IO server');
+            });
+
+            socket.on('error', (error) => {
+                console.error('Socket.IO Error:', error);
+            });
+
+            // Listen for chart:BTCUSDT event
+            socket.on('chart:BTCUSDT', (data) => {
+                try {
+                    updatePrice(data);
+                } catch (error) {
+                    console.error('Error processing data:', error);
+                }
+            });
+            
+            // Set up time period buttons
+            document.querySelectorAll('.time-button').forEach(button => {
+                button.addEventListener('click', function() {
+                    // Remove active class from all buttons
+                    document.querySelectorAll('.time-button').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    
+                    // Add active class to clicked button
+                    this.classList.add('active');
+                    
+                    // Update display seconds
+                    displaySeconds = parseInt(this.getAttribute('data-seconds'));
+                    
+                    // Update chart
+                    updateChartData();
+                });
+            });
+        }
+
+        function updatePrice(data) {
+            // Update current price and details
+            const currentPrice = parseFloat(data.close);
+            const priceDisplay = document.getElementById('currentPrice');
+            
+            // Update price color based on change
+            if (lastPrice !== null) {
+                if (currentPrice > lastPrice) {
+                    priceDisplay.className = 'price-display up';
+                } else if (currentPrice < lastPrice) {
+                    priceDisplay.className = 'price-display down';
+                }
+            }
+            
+            // Update price and details
+            priceDisplay.textContent = `$${currentPrice.toFixed(2)}`;
+            document.getElementById('volume').textContent = parseFloat(data.volume).toFixed(2);
+            document.getElementById('high').textContent = `$${parseFloat(data.high).toFixed(2)}`;
+            document.getElementById('low').textContent = `$${parseFloat(data.low).toFixed(2)}`;
+            document.getElementById('open').textContent = `$${parseFloat(data.open).toFixed(2)}`;
+            
+            // Update last update time
+            const now = new Date();
+            document.querySelector('.last-update').textContent = `Last updated: ${now.toLocaleTimeString()}`;
+            
+            // Add new price data point
+            priceData.push({
+                timestamp: data.t,
+                price: currentPrice
+            });
+            
+            // Limit the number of data points (keep last 1000)
+            if (priceData.length > 1000) {
+                priceData.shift();
+            }
+            
+            // Update chart
+            updateChartData();
+            
+            lastPrice = currentPrice;
+        }
+
+        // Start connection when page loads
+        window.onload = connect;
+
+        // Handle page close
+        window.onbeforeunload = function() {
+            if (socket) {
+                socket.disconnect();
+            }
+        };
+    </script>
+</body>
+</html> 

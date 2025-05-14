@@ -1,0 +1,81 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Swagger Implementation Checklist
+
+## List of Controllers to Implement
+
+- [x] HealthController
+- [x] AuthController
+- [x] UserController
+- [ ] New controllers should be added to this list
+
+## Controller Checks
+
+### HealthController
+- [x] Add `@ApiTags` decorator
+- [x] Add `@ApiOperation` for each endpoint
+- [x] Add `@ApiResponse` for each endpoint
+- [ ] Ensure responses use StandardResponseDto format
+
+### AuthController
+- [x] Add `@ApiTags` decorator
+- [x] Add `@ApiOperation` for each endpoint
+- [x] Add `@ApiResponse` for each endpoint
+- [x] Add `@ApiQuery` or `@ApiParam` if needed
+- [x] Add `@ApiBearerAuth` for APIs requiring authentication
+- [ ] Ensure responses use StandardResponseDto format
+
+### UserController
+- [x] Add `@ApiTags` decorator
+- [x] Add `@ApiOperation` for each endpoint
+- [x] Add `@ApiResponse` for each endpoint
+- [x] Add `@ApiBearerAuth` for APIs requiring authentication
+- [ ] Ensure responses use StandardResponseDto format
+
+## DTO Checks
+
+### Auth DTOs
+- [x] Each property has `@ApiProperty` with description
+- [x] Examples added for each property
+- [x] Ensure validators are complete
+
+### User DTOs
+- [ ] Each property has `@ApiProperty` with description
+- [ ] Examples added for each property
+- [ ] Ensure validators are complete
+
+## Response DTO Checks
+
+- [x] Response DTOs have complete decorators
+- [ ] Use `@ApiBaseResponse` if appropriate
+- [ ] Set suitable examples for each response
+- [ ] Implement StandardResponseDto for all API responses
+- [ ] Include proper pagination in StandardResponseDto where needed
+
+## Swagger UI Checks
+
+- [ ] Check UI at `/docs` endpoint
+- [ ] Ensure all APIs are displayed correctly
+- [ ] Ensure each API can be tested
+- [ ] Check Bearer token authentication functionality
+- [ ] Verify standardized response format appears correctly in documentation
+
+## Important Notes
+
+1. All new APIs must have complete Swagger documentation
+2. Ensure examples are practical and useful
+3. Swagger must always be synchronized with actual code
+4. Do not include sensitive information in examples
+5. Endpoints must follow kebab-case naming rules
+6. All API responses must use the standard response format
+
+## Testing Guidelines
+
+1. Run server in development environment
+2. Access `/docs` to open Swagger UI
+3. Test APIs in the UI
+4. Ensure sample requests work correctly
+5. Verify all responses follow the standard format 

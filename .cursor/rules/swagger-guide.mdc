@@ -1,0 +1,148 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Swagger Guide for API
+
+## General Rules
+- All APIs must have complete Swagger documentation
+- Each endpoint must have a clear description of its functionality and possible responses
+- DTOs must have all `@ApiProperty` decorators for all properties
+- All API responses must follow the common response format defined in common.mdc
+
+## Standard Response Format
+
+All API responses must be documented to follow this standard format:
+
+```typescript
+export class StandardResponseDto<T> {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: 'Operation successful' })
+  message: string;
+
+  @ApiProperty({ description: 'The actual data returned by the API' })
+  data: T;
+
+  @ApiProperty({
+    description: 'Pagination information, included only for paginated responses',
+    required: false
+  })
+  pagination?: {
+    page: number;
+    limit: number;
+    totalItems: number;
+    totalPages: number;
+  };
+
+  @ApiProperty({ example: '2023-06-15T10:30:00Z' })
+  timestamp: string;
+}
+```
+
+## Swagger Documentation Structure for Controllers
+
+```typescript
+@ApiTags('API Group Name')  // Group APIs in Swagger UI
+@Controller('endpoint-path')
+export class ExampleController {
+  
+  @Get('resource')
+  @ApiOperation({ summary: 'Brief description of API functionality' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Description of successful result',
+    type: StandardResponseDto<ResourceDTO>  // Using standard response format
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Description of Bad Request error'
+  })
+  // Other status codes if needed
+  async getResource() {
+    // implementation
+  }
+
+  // If JWT authentication is required
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()  // Displays lock icon and allows token input in Swagger UI
+  @Post('resource')
+  // ApiOperation and ApiResponse similar to above
+}
+```
+
+## Documentation for DTOs
+
+Each DTO must have complete `@ApiProperty` for all properties:
+
+```typescript
+export class ExampleDTO {
+  @ApiProperty({
+    description: 'Detailed description of the property',
+    example: 'Sample value',
+    required: true  // default is true
+  })
+  @IsString()  // Class validator decorators
+  property: string;
+
+  @ApiPropertyOptional({  // If property is not required
+    description: 'Detailed description of the property',
+    example: 123,
+    type: Number
+  })
+  optionalProperty?: number;
+}
+```
+
+## Important Swagger Decorators
+
+1. **@ApiTags(tag)**: Group APIs in UI
+2. **@ApiOperation(options)**: Detailed description of API operation
+3. **@ApiResponse(options)**: Describe possible responses
+4. **@ApiBearerAuth()**: Specify API requiring Bearer token authentication
+5. **@ApiParam(options)**: Describe parameter in URL
+6. **@ApiQuery(options)**: Describe query parameter
+7. **@ApiProperty(options)**: Describe property in DTO
+8. **@ApiPropertyOptional(options)**: Describe optional property
+
+## Custom Responses
+
+Use `@ApiBaseResponse` predefined in the project to create standard responses:
+
+```typescript
+@Get('resource')
+@ApiBaseResponse(ResourceDTO, {
+  description: 'Successfully retrieved resource information',
+  isArray: false  // true if returning an array
+})
+async getResource() {
+  // implementation
+}
+```
+
+## Documentation for Authentication-Required Requests
+
+```typescript
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()  // Add this decorator
+@Get('protected-resource')
+@ApiOperation({ summary: 'API requiring authentication' })
+// ApiResponse...
+async getProtectedResource() {
+  // implementation
+}
+```
+
+## Swagger UI
+
+Swagger UI is configured in `main.ts` and can be accessed at `/docs` when running the application in non-production environments.
+
+## Verification
+
+After adding Swagger documentation, check:
+1. All endpoints are displayed in Swagger UI
+2. Descriptions and examples are clear and understandable
+3. Test requests can be sent directly from Swagger UI
+4. Status codes and responses match reality 

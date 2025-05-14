@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "es2017",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./src",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "forceConsistentCasingInFileNames": false,
+    "noFallthroughCasesInSwitch": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@/database": ["modules/database/index"],
+      "@/database/*": ["modules/database/*"],
+      "@/api": ["modules/api/index"],
+      "@/api/*": ["modules/api/*"],
+      "@/shared/*": ["shared/*"],
+      "@/worker/*": ["modules/worker/*"],
+      "@/business/*": ["modules/business/*"],
+      "@/queue/*": ["modules/queue/*"],
+      "@nestjs/passport": ["./node_modules/@nestjs/passport"],
+      "passport-jwt": ["./node_modules/passport-jwt"],
+      "ethers": ["./node_modules/ethers"]
+    }
+  },
+  "include": ["src"]
+}

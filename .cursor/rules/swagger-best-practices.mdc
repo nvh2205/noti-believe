@@ -1,0 +1,209 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Swagger Rules and Standards
+
+## General Standards
+
+1. **Complete and Detailed**
+   - All APIs must have complete Swagger documentation
+   - Each endpoint must have detailed and clear descriptions
+   - Each input and output parameter must be described
+
+2. **Language Consistency**
+   - All descriptions must be in English according to MDC rules
+   - Maintain consistency in vocabulary and writing style
+
+3. **Examples and Sample Values**
+   - Provide examples for all properties
+   - Ensure examples are meaningful and realistic
+
+4. **Standardized Response Format**
+   - All API responses must follow the common format defined in common.mdc
+   - Paginated responses must include pagination information in the standard format
+   - Use generic types for response DTOs to ensure proper documentation
+
+## Controller Documentation Template
+
+```typescript
+@ApiTags('Resource Name') // Use PascalCase for tags
+@Controller('resource-path') // Follow kebab-case according to API rules
+export class ResourceController {
+  
+  @Get()
+  @ApiOperation({
+    summary: 'Get all resources',
+    description: 'Retrieves a list of all available resources with pagination'
+  })
+  @ApiQuery({
+    name: 'page',
+    description: 'Page number (starts from 1)',
+    required: false,
+    type: Number,
+    example: 1
+  })
+  @ApiQuery({
+    name: 'limit',
+    description: 'Number of items per page',
+    required: false,
+    type: Number,
+    example: 10
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Resources retrieved successfully',
+    type: StandardResponseDto<ResourceListResponseDto>
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid query parameters'
+  })
+  async getAllResources() {
+    // implementation
+  }
+}
+```
+
+## Naming Rules
+
+1. **DTO Classes**
+   - Name clearly based on purpose: `CreateUserDto`, `UpdateUserResponseDto`
+   - Use the `Dto` suffix for all classes
+
+2. **API Tags**
+   - Use singular nouns: 'User', 'Token', 'Auth'
+   - Use PascalCase: 'HealthCheck', not 'healthCheck' or 'health-check'
+
+## DTO Documentation Template
+
+```typescript
+export class CreateResourceDto {
+  @ApiProperty({
+    description: 'The name of the resource',
+    example: 'Example Resource',
+    minLength: 3,
+    maxLength: 50
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(3)
+  @MaxLength(50)
+  name: string;
+
+  @ApiPropertyOptional({
+    description: 'The description of the resource',
+    example: 'This is an example resource description',
+    default: ''
+  })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @ApiProperty({
+    description: 'The type of resource',
+    enum: ResourceType,
+    example: ResourceType.STANDARD,
+    enumName: 'ResourceType'
+  })
+  @IsEnum(ResourceType)
+  type: ResourceType;
+}
+```
+
+## Standard Response DTO Template
+
+```typescript
+export class StandardResponseDto<T> {
+  @ApiProperty({
+    description: 'HTTP status code',
+    example: 200
+  })
+  statusCode: number;
+
+  @ApiProperty({
+    description: 'Response message',
+    example: 'Resources retrieved successfully'
+  })
+  message: string;
+
+  @ApiProperty({
+    description: 'Response data'
+  })
+  data: T;
+
+  @ApiPropertyOptional({
+    description: 'Pagination information (only included for paginated responses)',
+    example: {
+      page: 1,
+      limit: 10,
+      totalItems: 100,
+      totalPages: 10
+    }
+  })
+  pagination?: PaginationDto;
+
+  @ApiProperty({
+    description: 'Response timestamp',
+    example: '2023-06-15T10:30:00Z'
+  })
+  timestamp: string;
+}
+
+export class PaginationDto {
+  @ApiProperty({
+    description: 'Current page number',
+    example: 1
+  })
+  page: number;
+
+  @ApiProperty({
+    description: 'Items per page',
+    example: 10
+  })
+  limit: number;
+
+  @ApiProperty({
+    description: 'Total number of items',
+    example: 100
+  })
+  totalItems: number;
+
+  @ApiProperty({
+    description: 'Total number of pages',
+    example: 10
+  })
+  totalPages: number;
+}
+```
+
+## Quality Checklist
+
+Before committing code, ensure:
+
+1. ✅ All endpoints have `@ApiTags` and `@ApiOperation`
+2. ✅ All methods in controllers have `@ApiResponse` with appropriate status codes
+3. ✅ All parameters, body, and query are fully described
+4. ✅ All DTOs have `@ApiProperty` for each property
+5. ✅ Examples are meaningful and representative of actual data
+6. ✅ Descriptions are clear and easy to understand
+7. ✅ All responses follow the standard response format
+
+## Security Notes
+
+1. Never include sensitive information (passwords, tokens, keys) in examples
+2. Use `@ApiBearerAuth()` for all endpoints requiring authentication
+3. Use `@ApiSecurity()` if custom authentication is needed
+
+## Commonly Used Swagger Decorators
+
+| Decorator | Purpose | Usage Location |
+|-----------|---------|----------------|
+| @ApiTags | Group APIs by functionality | Controller |
+| @ApiOperation | Describe endpoint operation | Method |
+| @ApiResponse | Describe possible response | Method |
+| @ApiProperty | Describe property in DTO | Property |
+| @ApiQuery | Describe query parameter | Method |
+| @ApiParam | Describe path parameter | Method |
+| @ApiBearerAuth | Specify endpoint requiring Bearer token | Method/Controller | 

@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14
+    container_name: trader-prediction-postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trader_prediction
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: trader-prediction-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass redis_password
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: trader-prediction-rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trader-prediction-api
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - IS_API=1
+      - IS_WORKER=0
+      - APP_ENV=local
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_DATABASE=trader_prediction
+      - DB_SYNC=1
+      - DB_DEBUG=1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DATABASE=0
+      - REDIS_URL=redis://redis:6379
+      - REDIS_PASSWORD=redis_password
+      - REDIS_FAMILY=0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - JWT_SECRET=super_secret_key
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trader-prediction-worker
+    restart: always
+    environment:
+      - IS_API=0
+      - IS_WORKER=1
+      - APP_ENV=local
+      - PORT=3001
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_DATABASE=trader_prediction
+      - DB_SYNC=1
+      - DB_DEBUG=1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DATABASE=0
+      - REDIS_URL=redis://redis:6379
+      - REDIS_PASSWORD=redis_password
+      - REDIS_FAMILY=0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - JWT_SECRET=super_secret_key
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+
+  microservice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trader-prediction-microservice
+    restart: always
+    ports:
+      - "3002:3002"
+    environment:
+      - IS_API=0
+      - IS_WORKER=0
+      - APP_ENV=local
+      - PORT=3002
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_DATABASE=trader_prediction
+      - DB_SYNC=1
+      - DB_DEBUG=1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DATABASE=0
+      - REDIS_URL=redis://redis:6379
+      - REDIS_PASSWORD=redis_password
+      - REDIS_FAMILY=0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - JWT_SECRET=super_secret_key
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+
+volumes:
+  postgres_data:

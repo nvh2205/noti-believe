@@ -1,0 +1,69 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Rule Name: common.mdc
+Description: 
+# Language Rules
+- All code comments must be in English
+- All system error messages must be in English
+- Data returned from API/functions must be in English
+- User communication should be in English
+
+# Logging Rules
+- All console logs must have clear annotations in the format:
+  console.log(`[icon] [class_name] [function_name] [variable_name]:`, variable);
+  
+- Suggested icons:
+  * 🔍 - Search/Query
+  * ⚠️ - Warning
+  * 🔴 - Error
+  * ✅ - Success
+  * 🔄 - Processing
+
+# Code Structure Rules
+- Each functionality must be encapsulated in a separate function
+- A function should not exceed 300 words
+- Functions must have high reusability
+- Each function should perform only one specific task
+- Name variables/functions to clearly describe their purpose
+- Adhere to SOLID and DRY principles:
+  * SOLID:
+    - S (Single Responsibility): Each class should have only one reason to change
+    - O (Open/Closed): Extend classes without modifying existing code
+    - L (Liskov Substitution): Child classes can replace parent classes
+    - I (Interface Segregation): Multiple specialized interfaces are better than one large interface
+    - D (Dependency Inversion): Depend on abstractions, not implementations
+  * DRY (Don't Repeat Yourself): Avoid code duplication, write each logic only once
+
+# API Response Format Rules
+- All API responses must follow a common format structure
+- Pagination responses must also adhere to the standard format
+- Standard response format:
+  ```json
+  {
+    "statusCode": 200, // HTTP status code
+    "message": "Success message", // Human-readable message
+    "data": {}, // Actual response data (object, array, or primitive)
+    "pagination": { // Optional, include only for paginated responses
+      "page": 1,
+      "limit": 10,
+      "totalItems": 100,
+      "totalPages": 10
+    },
+    "timestamp": "2023-06-15T10:30:00Z" // ISO timestamp of the response
+  }
+  ```
+- Error responses must follow the same structure with appropriate status codes and error messages
+- Never return raw data directly without following this structure
+
+# Error Handling Rules
+- All data manipulation functions must have try/catch
+- Log complete error information
+- Return clear, understandable error messages to users
+
+# Security Rules
+- Do not store credentials in code
+- Use environment variables for sensitive information
+- Validate input data

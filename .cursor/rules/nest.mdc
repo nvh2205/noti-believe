@@ -1,0 +1,28 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Endpoint Naming Rules in NestJS
+
+## General Rules
+- All endpoints must be named according to kebab-case (a-b) convention.
+- All endpoints must have swagger documentation.
+- Do not use camelCase (aB) or special characters.
+- Do not use HTTP verb prefixes such as get, post, put, delete, update in endpoint names.
+
+
+## Examples
+- Correct: `user-profile`, `data`, `user-info`
+- Incorrect: `userProfile`, `getData`, `updateUserInfo`, `get-data`, `update-user-info`
+
+## Application
+- Applied to all controllers in the project
+- Applied to both path and param in endpoints
+- Applied to both sub-endpoints and main endpoints
+
+## Reasons
+- Easy to read and understand
+- Good compatibility with other systems
+- Standardization of APIs throughout the system
+- Avoids duplication with HTTP methods already specified in decorators (@Get, @Post, @Put, @Delete)
