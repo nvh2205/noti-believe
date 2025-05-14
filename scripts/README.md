@@ -73,6 +73,36 @@ The scripts will set up the following services:
 
 The setup scripts create a `.env` file with default configurations. You may need to modify this file for your specific requirements, especially for production environments.
 
+## Troubleshooting
+
+### Docker Permission Issues on Ubuntu
+
+If you encounter this error:
+```
+permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock
+```
+
+There are two ways to fix this:
+
+1. **Run the scripts with sudo**:
+   ```bash
+   sudo ./setup.sh
+   # or
+   sudo ./auto-setup.sh
+   ```
+
+2. **Add your user to the docker group** (recommended):
+   ```bash
+   sudo usermod -aG docker $USER
+   ```
+   After running this command, log out and log back in, or run:
+   ```bash
+   newgrp docker
+   ```
+   Then try running the scripts again.
+
+The setup scripts now include automatic detection of Docker permission issues and will offer to fix them for you.
+
 ## Notes
 
 - The setup scripts require `git`, `docker`, and `docker-compose` to be installed on your system.
