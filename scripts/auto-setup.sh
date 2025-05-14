@@ -31,6 +31,34 @@ done
 echo -e "${GREEN}✓ All required dependencies are installed.${NC}"
 echo
 
+# Check Docker permissions
+echo -e "${YELLOW}Checking Docker permissions...${NC}"
+if ! docker info &>/dev/null; then
+  OS=$(uname -s)
+  echo -e "${RED}Error: Cannot connect to the Docker daemon.${NC}"
+  
+  if [ "$OS" = "Linux" ]; then
+    echo -e "${YELLOW}It appears you don't have permission to access the Docker socket.${NC}"
+    echo -e "To fix this issue, you can try one of the following solutions:"
+    echo -e "1. Run this script with sudo: ${RED}sudo $0 $REPO_URL $BRANCH_NAME $CLONE_DIR${NC}"
+    echo -e "2. Add your user to the docker group and log out and log back in:"
+    echo -e "   ${RED}sudo usermod -aG docker $USER${NC}"
+    
+    # For CI/CD environments, attempt to use sudo if available
+    if command -v sudo &>/dev/null; then
+      echo -e "${YELLOW}Attempting to restart with sudo...${NC}"
+      exec sudo "$0" "$REPO_URL" "$BRANCH_NAME" "$CLONE_DIR"
+    fi
+  else
+    echo -e "${YELLOW}Please ensure Docker is running and you have proper permissions.${NC}"
+  fi
+  
+  exit 1
+fi
+
+echo -e "${GREEN}✓ Docker permissions are valid.${NC}"
+echo
+
 # Display configuration
 echo -e "${YELLOW}Configuration:${NC}"
 echo -e "Repository: $REPO_URL"
@@ -112,6 +140,10 @@ docker-compose up -d
 # Check if docker-compose up was successful
 if [ $? -ne 0 ]; then
   echo -e "${RED}Failed to start Docker containers.${NC}"
+  echo -e "${YELLOW}If you're seeing permission errors on Ubuntu, you can fix them by:${NC}"
+  echo -e "1. Running with sudo: ${RED}sudo $0 $REPO_URL $BRANCH_NAME $CLONE_DIR${NC}"
+  echo -e "2. Adding your user to the docker group: ${RED}sudo usermod -aG docker $USER${NC}"
+  echo -e "   Then log out and log back in."
   exit 1
 fi
 
