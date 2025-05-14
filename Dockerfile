@@ -1,7 +1,7 @@
 FROM node:18-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 COPY . .
 RUN npm run build
 
@@ -10,7 +10,7 @@ RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 nestjs
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 RUN chown -R nestjs:nodejs /app
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 USER nestjs
