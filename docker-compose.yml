@@ -94,6 +94,8 @@ services:
       - REDIS_PASSWORD=redis_password
       - REDIS_FAMILY=0
       - JWT_SECRET=super_secret_key
+      - TELEGRAM_BOT_TOKEN=7490724461:AAFlp0Q1ASA6Ic56akHubraQSwQ4DLtmahI
+      - TELEGRAM_CHAT_ID=-4733634970
     depends_on:
       postgres:
         condition: service_healthy
