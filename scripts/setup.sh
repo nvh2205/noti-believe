@@ -21,6 +21,12 @@ DEFAULT_REPO="https://github.com/yourusername/signal-belive.git"
 DEFAULT_BRANCH="main"
 DEFAULT_DIR="signal-belive"
 
+# Check if script was run with sudo (to avoid infinite loop)
+SUDO_DETECTED=0
+if [ "$EUID" -eq 0 ]; then
+  SUDO_DETECTED=1
+fi
+
 # Functions
 function check_command() {
   if ! command -v $1 &> /dev/null; then
@@ -44,7 +50,7 @@ function check_docker_permissions() {
     OS=$(uname -s)
     echo -e "${RED}Error: Cannot connect to the Docker daemon.${NC}"
     
-    if [ "$OS" = "Linux" ]; then
+    if [ "$OS" = "Linux" ] && [ "$SUDO_DETECTED" -eq 0 ]; then
       echo -e "${YELLOW}It appears you don't have permission to access the Docker socket.${NC}"
       echo -e "To fix this issue, you can try one of the following solutions:"
       echo -e "1. Run this script with sudo:"
@@ -61,7 +67,8 @@ function check_docker_permissions() {
         exit 1
       elif confirm "Would you like to continue running this script with sudo?"; then
         echo -e "${YELLOW}Restarting script with sudo...${NC}"
-        exec sudo "$0" "$@"
+        exec sudo bash -c "SUDO_DETECTED=1 $0 $*"
+        exit $?
       else
         echo -e "${RED}Setup cancelled.${NC}"
         exit 1

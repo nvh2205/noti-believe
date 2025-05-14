@@ -11,7 +11,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node main.js",
+    "start:prod": "node dist/main.js",
     "start:worker": "IS_WORKER=1 nest start --watch",
     "pretty": "prettier --write \"./**/*.{js,jsx,mjs,cjs,ts,tsx,json}\"",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
