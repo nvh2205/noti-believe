@@ -1,44 +1,80 @@
-# Blink Chat Backend - Test Scripts
+# Signal-Belive Setup Scripts
 
-Scripts to test the APIs of Blink Chat Backend.
+This directory contains scripts to help with the setup and management of the Signal-Belive project.
 
-## Installation
+## Available Scripts
 
-```bash
-cd scripts
-npm install
-```
+### 1. `setup.sh`
 
-## Usage
+An interactive script that guides you through the process of:
+- Cloning the repository
+- Setting up environment variables
+- Starting Docker containers
 
-### 1. Create a new Ethereum wallet for testing
-
-```bash
-npm run generate-wallet
-```
-
-This script will create a new Ethereum wallet, including:
-- Private key
-- Wallet address
-- Mnemonic phrase
-
-Copy the generated private key to the `test-auth-api.ts` file for the next step.
-
-### 2. Test login API with Binance Wallet
+#### Usage:
 
 ```bash
-npm run test-auth
+./setup.sh
 ```
 
-This script will:
-1. Create a wallet from the configured private key
-2. Call the `/auth/nonce` API to get a nonce
-3. Sign a message containing the nonce with the private key
-4. Call the `/auth/login` API to log in
-5. Display the JWT token and user information received
+The script will prompt you for:
+- Git repository URL
+- Branch name
+- Directory to clone to
+
+### 2. `auto-setup.sh`
+
+A non-interactive version of the setup script, designed for automated deployments or CI/CD pipelines.
+
+#### Usage:
+
+```bash
+./auto-setup.sh [REPO_URL] [BRANCH] [DIRECTORY]
+```
+
+**Parameters:**
+- `REPO_URL` (optional): Git repository URL (default: https://github.com/yourusername/signal-belive.git)
+- `BRANCH` (optional): Branch name (default: main)
+- `DIRECTORY` (optional): Directory to clone to (default: signal-belive)
+
+**Example:**
+```bash
+./auto-setup.sh https://github.com/myusername/signal-belive.git develop my-project
+```
+
+### 3. `docker-helper.sh`
+
+A utility script for managing Docker containers for the project.
+
+#### Usage:
+
+```bash
+./docker-helper.sh [COMMAND]
+```
+
+**Available commands:**
+- `up`: Start all services in detached mode
+- `down`: Stop all services and remove containers
+- `restart`: Restart all services
+- `logs`: Show logs from all services
+- `build`: Rebuild all services
+- `ps`: Show status of services
+- `clean`: Remove all unused Docker resources
+- `help`: Show help message
+
+## Services
+
+The scripts will set up the following services:
+- PostgreSQL (database)
+- Redis (cache)
+- Worker (background processing)
+
+## Environment Configuration
+
+The setup scripts create a `.env` file with default configurations. You may need to modify this file for your specific requirements, especially for production environments.
 
 ## Notes
 
-- Ensure the server is running before testing
-- By default, the API URL is `http://localhost:3000`, if needed, change it in the `test-auth-api.ts` file
-- The created wallets are for testing purposes only, do not use them in production environments 
+- The setup scripts require `git`, `docker`, and `docker-compose` to be installed on your system.
+- The `.env` file created by the scripts is configured for the worker service by default.
+- For security reasons, you should change the default passwords in the `.env` file before deploying to production. 

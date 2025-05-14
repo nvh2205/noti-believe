@@ -122,7 +122,8 @@ export class TokenProcessorService {
     }
   }
 
-  private getRiskIndicator(followers: number): string {
+  private getRiskIndicator(followers: number, isVerified: boolean): string {
+    if (isVerified) return '🔵'; // Verified account
     if (isNaN(followers)) return '⚠️';
     if (followers > 10000) return '🟢'; // Low risk - established account
     if (followers > 1000) return '🟡'; // Medium risk
@@ -133,12 +134,13 @@ export class TokenProcessorService {
   private formatTelegramMessage(tokenData: any): string {
     const twitterInfo = tokenData.twitter_info || {};
     const followers = parseInt(twitterInfo.followers_count) || 0;
+    const isVerified = twitterInfo.is_blue_verified || false;
     const caAddress = tokenData.ca_address || '';
     const tokenAge = this.formatTokenAge(tokenData.created_at);
     const isNew =
       tokenAge.includes('min') ||
       (tokenAge.includes('hour') && parseInt(tokenAge) < 3);
-    const riskIndicator = this.getRiskIndicator(followers);
+    const riskIndicator = this.getRiskIndicator(followers, isVerified);
 
     return `
 <b>🚀 ${isNew ? '🔥 FRESH ' : ''}TOKEN ALERT${isNew ? ' 🔥' : ''} 🚀</b>
@@ -149,14 +151,14 @@ export class TokenProcessorService {
   • <b>Created:</b> ${tokenAge}
 
 <b>🐦 Twitter: ${riskIndicator}</b>
-  • <b>Handle:</b> <a href="https://twitter.com/${tokenData.twitter_handler}">@${tokenData.twitter_handler}</a>
+  • <b>Handle:</b> <a href="https://twitter.com/${tokenData.twitter_handler}">@${tokenData.twitter_handler}</a> ${isVerified ? '✓' : ''}
   • <b>Name:</b> ${twitterInfo.name || 'N/A'}
+  • <b>Verified:</b> ${isVerified ? '✅ Yes' : '❌ No'}
   • <b>Followers:</b> ${followers.toLocaleString()} ${followers > 1000 ? '🔥' : ''}
 
 <b>🔗 Links:</b>
-  • <b>Believe:</b> <a href="${tokenData.link}">View on Believe Signal</a>
   • <b>GMGN:</b> <a href="https://gmgn.ai/sol/token/${caAddress}">View on GMGN Explorer</a>
-  • <b>Trojan:</b> <a href="https://t.me/solana_trojanbot?start=d-oxandrein-${caAddress}">Security Analysis</a>
+  • <b>Trojan:</b> <a href="https://t.me/solana_trojanbot?start=d-oxandrein-${caAddress}">BUY $${tokenData.coin_name}</a>
 
 <b>🔑 Contract Address:</b>
 <code>${caAddress}</code>

@@ -1,17 +1,20 @@
-FROM node:18.15.0 AS builder
+FROM node:18-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
+COPY yarn.lock ./
+RUN yarn install --frozen-lockfile
 COPY . .
-RUN npm run build
+RUN yarn build
 
-FROM node:18.15.0 AS runner
-RUN mkdir -p /home/node/app/node_modules && chown -R node:node /home/node/app
-WORKDIR /home/node/app
-COPY --chown=node:node package*.json ./
-RUN npm install --legacy-peer-deps
-USER node
-EXPOSE 8080
-COPY --from=builder --chown=node:node /app/dist  .
-# RUN npm run migration:run
-CMD ["npm", "run", "start:prod"]
+FROM node:18-alpine AS runner
+RUN addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 nestjs
+WORKDIR /app
+COPY package*.json ./
+COPY yarn.lock ./
+RUN yarn install --production --frozen-lockfile
+RUN chown -R nestjs:nodejs /app
+COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
+USER nestjs
+EXPOSE 3000
+CMD ["yarn", "start:prod"]

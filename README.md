@@ -73,25 +73,13 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 Nest is [MIT licensed](LICENSE).
 # startkit-nest
 
-## NestJS Microservice with RabbitMQ
+## Application Architecture
 
-This project includes an integrated microservice architecture using RabbitMQ for message transport. The API module connects to RabbitMQ to send and receive messages. See the detailed instructions in [MICROSERVICE_SETUP.md](./MICROSERVICE_SETUP.md).
-
-### Queue Configuration
-
-All queue names are defined as constants in the API module:
-- Main queue: `main_queue` (handles user and auth operations)
-- Prediction service queue: `prediction_queue`
-
-### Service Configuration
-
-The application uses two primary service clients:
-- `MAIN_SERVICE`: Handles all user and authentication operations via the main queue
-- `PREDICTION_SERVICE`: Handles all prediction-related operations via the prediction queue
+This project is a NestJS application with API and worker components using Redis for caching and message queuing.
 
 ### Quick Start with Docker Compose
 
-The easiest way to run the full stack including RabbitMQ is using Docker Compose:
+The easiest way to run the full stack is using Docker Compose:
 
 ```bash
 # Start all services
@@ -107,24 +95,23 @@ docker-compose logs -f
 This will start:
 - PostgreSQL database
 - Redis cache
-- RabbitMQ message broker
-- API server (port 3000) - HTTP API + microservices
+- API server (port 3000)
 - Worker service - Background processing
 
 ### Running Locally
 
 To run the server locally with Docker:
 
-1. Make sure RabbitMQ is running:
+1. Make sure Redis is running:
    ```bash
-   docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+   docker run -d --name redis -p 6379:6379 redis:7-alpine
    ```
 
 2. Set the environment variables in .env file:
    ```
    IS_API=1  # Enable API mode
    IS_WORKER=0
-   RABBITMQ_URL=amqp://guest:guest@localhost:5672
+   REDIS_URL=redis://localhost:6379
    ```
 
 3. Run the application:
@@ -132,39 +119,12 @@ To run the server locally with Docker:
    npm run start:dev
    ```
 
-### Microservice Architecture
-
-This application implements a microservice architecture with the following services:
-
-1. **Main Service**: Handles user operations and authentication (via `main_queue`)
-   - User operations: create, get, update
-   - Auth operations: login, validate token, refresh token
-
-2. **Prediction Service**: Manages user predictions (via `prediction_queue`)
-   - Prediction operations: create, get, update
-
-All services are integrated directly into the API module with RabbitMQ transport.
-
 ### Required Dependencies
 
 Ensure you have these packages installed:
 ```bash
-npm install amqp-connection-manager amqplib @nestjs/microservices
+npm install ioredis @nestjs/bull bull
 ```
-
-### Testing the Microservice Setup
-
-1. Create a user via API:
-   ```bash
-   curl -X POST http://localhost:3000/user -H "Content-Type: application/json" -d '{"address":"0x123abc"}'
-   ```
-
-2. Get user by ID (ID from previous response):
-   ```bash
-   curl -X GET http://localhost:3000/user/{USER_ID}
-   ```
-
-3. Check RabbitMQ management UI at http://localhost:15672 to see message queues and exchanges.
 
 # Believe Signal Token Tracker
 
@@ -207,3 +167,132 @@ This will:
 2. Fetch tokens from the Believe Signal API every 2 seconds
 3. Add new tokens to a processing queue
 4. Send notifications to your Telegram channel/group
+
+# Signal Belive Project
+
+## Docker Setup
+
+This project includes Docker and Docker Compose configurations for easy development and deployment.
+
+### Prerequisites
+
+- Docker: [Install Docker](https://docs.docker.com/get-docker/)
+- Docker Compose: [Install Docker Compose](https://docs.docker.com/compose/install/)
+
+### Services
+
+The Docker Compose setup includes the following services:
+
+1. **PostgreSQL**: Database service
+2. **Redis**: Cache and message broker
+3. **API**: NestJS REST API service
+4. **Worker**: Background worker service
+
+### Environment Variables
+
+Each service has its own set of environment variables defined in the `docker-compose.yml` file. You can customize these variables according to your needs.
+
+### Running the Application
+
+To start all services:
+
+```bash
+docker-compose up -d
+```
+
+To stop all services:
+
+```bash
+docker-compose down
+```
+
+To view logs from all services:
+
+```bash
+docker-compose logs -f
+```
+
+To view logs from a specific service:
+
+```bash
+docker-compose logs -f <service-name>
+```
+
+Example:
+```bash
+docker-compose logs -f api
+```
+
+### Building the Docker Images
+
+To rebuild the Docker images:
+
+```bash
+docker-compose build
+```
+
+### Accessing Services
+
+- **API**: http://localhost:3000
+- **API Documentation (Swagger)**: http://localhost:3000/docs
+
+### Database Access
+
+You can connect to the PostgreSQL database using the following credentials:
+
+- **Host**: localhost
+- **Port**: 5432
+- **Username**: postgres
+- **Password**: postgres
+- **Database**: signal_belive
+
+### Development with Docker
+
+For development purposes, you can mount your local source code into the containers to reflect changes immediately. Modify the docker-compose.yml file to add volumes:
+
+```yaml
+services:
+  api:
+    # ... other configurations
+    volumes:
+      - ./src:/app/src
+```
+
+## Environment Configuration
+
+Create a `.env` file in the root directory with the following variables:
+
+```
+# Application configuration
+# Set one of these to 1 based on the service you want to run
+IS_API=1        # Set to 1 to run as API server
+IS_WORKER=0     # Set to 1 to run as Worker (background tasks)
+
+APP_ENV=development
+PORT=3000
+NODE_ENV=development
+
+# Database configuration
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+DB_DATABASE=signal_belive
+DB_DEBUG=1
+DB_SYNC=1
+
+# Redis configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DATABASE=0
+REDIS_PASSWORD=redis_password
+REDIS_URL=redis://:redis_password@localhost:6379
+REDIS_FAMILY=0
+
+# JWT configuration
+JWT_SECRET=super_secret_key
+
+# Optional: Telegram Bot configuration (for worker)
+# TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+# TELEGRAM_CHAT_ID=your_chat_id
+```
