@@ -1,31 +1,294 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import WebSocket from 'ws';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+import { AxiosResponse } from 'axios';
+import * as cheerio from 'cheerio';
+import { TweetScoutService } from './tweet-scout.service';
+import { TokenProcessorService } from '../processors/token-processor.service';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
+
+// Interfaces for Axiom WebSocket messages
+interface PoolFees {
+  base_fee: {
+    cliff_fee_numerator: string;
+    period_frequency: string;
+    reduction_factor: string;
+    number_of_period: number;
+    fee_scheduler_mode: number;
+  };
+  dynamic_fee: {
+    initialized: number;
+    max_volatility_accumulator: number;
+    variable_fee_control: number;
+    bin_step: number;
+    filter_period: number;
+    decay_period: number;
+    reduction_factor: number;
+    bin_step_u128: string;
+  };
+  protocol_fee_percent: number;
+  referral_fee_percent: number;
+}
+
+interface CurvePoint {
+  sqrt_price: string;
+  liquidity: string;
+}
+
+interface LockedVestingConfig {
+  amount_per_period: string;
+  cliff_duration_from_migration_time: string;
+  frequency: string;
+  number_of_period: string;
+  cliff_unlock_amount: string;
+}
+
+interface ProtocolDetails {
+  quote_mint: string;
+  fee_claimer: string;
+  owner: string;
+  pool_fees: PoolFees;
+  collect_fee_mode: number;
+  migration_option: number;
+  activation_type: number;
+  token_decimal: number;
+  version: number;
+  token_type: number;
+  quote_token_flag: number;
+  partner_locked_lp_percentage: number;
+  partner_lp_percentage: number;
+  creator_locked_lp_percentage: number;
+  creator_lp_percentage: number;
+  swap_base_amount: string;
+  migration_quote_threshold: string;
+  migration_base_threshold: string;
+  migration_sqrt_price: string;
+  locked_vesting_config: LockedVestingConfig;
+  sqrt_start_price: string;
+  curve: CurvePoint[];
+  config_address: string;
+  base_vault: string;
+  quote_vault: string;
+  token_program: string;
+  created_at: number;
+  deployer_address: string;
+  pre_migration_token_supply: string;
+  post_migration_token_supply: string;
+  migration_fee_option: number;
+  fixed_token_supply_flag: number;
+}
+
+interface NewPairContent {
+  pair_address: string;
+  signature: string;
+  token_address: string;
+  token_name: string;
+  token_ticker: string;
+  token_image: string | null;
+  token_uri: string;
+  token_decimals: number;
+  pair_sol_account: string;
+  pair_token_account: string;
+  protocol: string;
+  protocol_details: ProtocolDetails;
+  created_at: string;
+  website: string | null;
+  twitter: string | null;
+  telegram: string | null;
+  discord: string | null;
+  mint_authority: string | null;
+  open_trading: string;
+  deployer_address: string;
+  supply: number;
+  initial_liquidity_sol: number;
+  initial_liquidity_token: number;
+  top_10_holders: number;
+  lp_burned: number;
+  updated_at: string;
+  freeze_authority: string | null;
+  extra: any | null;
+  slot: number;
+}
+
+interface AxiomMessage {
+  room: string;
+  content: NewPairContent;
+}
+
+// Interface for token data scraped from believe.app
+interface BelieveTokenData {
+  tokenAddress: string;
+  launchedBy: string;
+  createdAt: string;
+  marketCap: string;
+  price: string;
+}
 
 @Injectable()
-export class AxiomWebSocketService implements OnModuleInit, OnModuleDestroy {
+export class AxiomWebSocketService
+  implements OnModuleInit, OnModuleDestroy, OnApplicationBootstrap
+{
   private client: WebSocket;
   private isConnected = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 5000; // 5 seconds
   private pingInterval: NodeJS.Timeout;
+  private tokenRefreshInterval: NodeJS.Timeout;
+  private currentAccessToken: string = '';
+  private refreshToken: string =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZWZyZXNoVG9rZW5JZCI6IjJlMDU2NzBkLTBlZWYtNDJkNi05NGNjLTFmMzk2NTQwZDhhNyIsImlhdCI6MTc0NzE5NjM1M30.l5qzWDGXf16fk3RfYxZmSx1ovOrU6Z5uiR25GgHwCts';
 
   constructor(
     @InjectPinoLogger(AxiomWebSocketService.name)
     private readonly logger: PinoLogger,
+    private readonly httpService: HttpService,
+    private readonly tweetScoutService: TweetScoutService,
+    private readonly tokenProcessorService: TokenProcessorService,
+    @InjectQueue('token-queue') private readonly tokenQueue: Queue,
   ) {}
 
   onModuleInit() {
-    // this.connect();
+    this.refreshAccessToken();
+    this.setupTokenRefreshInterval();
+    this.connect();
   }
 
   onModuleDestroy() {
     this.disconnect();
+    this.clearTokenRefreshInterval();
+  }
+
+  async onApplicationBootstrap() {
+    // const tokenData = await this.scrapeTokenData(
+    //   'A82xG78RJugg1kvXLn9Jfq3mS2J9MxxiiAhKZpxJKbtT',
+    // );
+  }
+
+  private async refreshAccessToken() {
+    try {
+      this.logger.info(
+        '🔄 [AxiomWebSocketService] refreshAccessToken: Refreshing access token',
+      );
+
+      const response = await firstValueFrom(
+        this.httpService.post(
+          'https://api10.axiom.trade/refresh-access-token',
+          {},
+          {
+            headers: {
+              accept: 'application/json, text/plain, */*',
+              'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
+              'content-length': '0',
+              origin: 'https://axiom.trade',
+              priority: 'u=1, i',
+              referer: 'https://axiom.trade/',
+              'sec-ch-ua':
+                '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+              'sec-ch-ua-mobile': '?0',
+              'sec-ch-ua-platform': '"macOS"',
+              'sec-fetch-dest': 'empty',
+              'sec-fetch-mode': 'cors',
+              'sec-fetch-site': 'same-site',
+              'user-agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+              Cookie: `auth-refresh-token=${this.refreshToken}`,
+            },
+            withCredentials: true,
+          },
+        ),
+      );
+
+      this.logger.debug(
+        { statusCode: response.status, headers: response.headers },
+        '🔍 [AxiomWebSocketService] refreshAccessToken: Received response',
+      );
+
+      // Extract the new access token from Set-Cookie header
+      const setCookieHeader = response.headers['set-cookie'];
+      if (setCookieHeader && setCookieHeader.length > 0) {
+        this.logger.debug(
+          { setCookieHeader },
+          '🔍 [AxiomWebSocketService] refreshAccessToken: Found Set-Cookie headers',
+        );
+
+        const authTokenCookie = setCookieHeader.find((cookie) =>
+          cookie.startsWith('auth-access-token='),
+        );
+        if (authTokenCookie) {
+          // Extract just the token part
+          const tokenMatch = authTokenCookie.match(/auth-access-token=([^;]+)/);
+          if (tokenMatch && tokenMatch[1]) {
+            this.currentAccessToken = tokenMatch[1];
+            this.logger.info(
+              { tokenLength: this.currentAccessToken.length },
+              '✅ [AxiomWebSocketService] refreshAccessToken: Successfully refreshed access token',
+            );
+
+            // If there's an active connection, reconnect to apply the new token
+            if (this.isConnected) {
+              this.logger.info(
+                '🔄 [AxiomWebSocketService] refreshAccessToken: Reconnecting to apply new token',
+              );
+              this.reconnect();
+            }
+
+            return true;
+          }
+        }
+      }
+
+      this.logger.warn(
+        { response: response.data },
+        '⚠️ [AxiomWebSocketService] refreshAccessToken: Could not extract new access token from response',
+      );
+      return false;
+    } catch (error) {
+      this.logger.error(
+        { error },
+        '🔴 [AxiomWebSocketService] refreshAccessToken: Error refreshing access token',
+      );
+      return false;
+    }
+  }
+
+  private setupTokenRefreshInterval() {
+    this.clearTokenRefreshInterval();
+    this.tokenRefreshInterval = setInterval(
+      () => {
+        this.refreshAccessToken();
+      },
+      10 * 60 * 1000,
+    ); // 10 minutes
+    this.logger.info(
+      '🔄 [AxiomWebSocketService] setupTokenRefreshInterval: Token refresh interval set to 10 minutes',
+    );
+  }
+
+  private clearTokenRefreshInterval() {
+    if (this.tokenRefreshInterval) {
+      clearInterval(this.tokenRefreshInterval);
+      this.logger.debug(
+        '🔄 [AxiomWebSocketService] clearTokenRefreshInterval: Token refresh interval cleared',
+      );
+    }
   }
 
   private connect() {
     try {
+      // Ensure any existing connection is properly closed
+      if (this.client) {
+        this.disconnect();
+      }
+
       this.logger.info(
         '🔄 [AxiomWebSocketService] connect: Connecting to Axiom Trade WebSocket',
       );
@@ -33,14 +296,18 @@ export class AxiomWebSocketService implements OnModuleInit, OnModuleDestroy {
       // Configure WebSocket with the required origin and host headers
       this.client = new WebSocket('wss://cluster3.axiom.trade/', {
         headers: {
-          'Origin': 'https://axiom.trade',
-          'Host': 'cluster3.axiom.trade',
+          Origin: 'https://axiom.trade',
+          Host: 'cluster3.axiom.trade',
           'User-Agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-          Cookie:
-            'auth-access-token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdXRoZW50aWNhdGVkVXNlcklkIjoiMTQ5ZjZhYjItMDY2MS00YjI2LThmNTgtYzVhOTE2MTQ2NjQ1IiwiaWF0IjoxNzQ3MjQ0NjE5LCJleHAiOjE3NDcyNDU1Nzl9.1snkuuhbYqexBBaMXfR4gKqkapHEqnAyfaEeKhFVTgo; auth-refresh-token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZWZyZXNoVG9rZW5JZCI6IjJlMDU2NzBkLTBlZWYtNDJkNi05NGNjLTFmMzk2NTQwZDhhNyIsImlhdCI6MTc0NzE5NjM1M30.l5qzWDGXf16fk3RfYxZmSx1ovOrU6Z5uiR25GgHwCts',
+          Cookie: `auth-access-token=${this.currentAccessToken}; HttpOnly; Secure; SameSite=Lax; Path=/; Domain=.axiom.trade; Max-Age=900`,
         },
       });
+
+      this.logger.debug(
+        { tokenLength: this.currentAccessToken.length },
+        '🔍 [AxiomWebSocketService] connect: Using access token',
+      );
 
       this.client.on('open', () => {
         this.isConnected = true;
@@ -161,21 +428,250 @@ export class AxiomWebSocketService implements OnModuleInit, OnModuleDestroy {
     this.client.send(joinMessage);
   }
 
-  private handleMessage(message: any) {
-    this.logger.debug(
-      { message },
-      '🔍 [AxiomWebSocketService] handleMessage: Received message',
-    );
+  private async handleMessage(message: any) {
+    try {
+      // this.logger.debug(
+      //   { message },
+      //   '🔍 [AxiomWebSocketService] handleMessage: Received message',
+      // );
 
-    // Implement message handling logic based on Axiom Trade WebSocket API
-    // This would dispatch different types of messages to appropriate handlers
+      // Check if the message is a valid AxiomMessage
+      const axiomMessage = message as AxiomMessage;
 
-    // Example:
-    // if (message.type === 'trade') {
-    //   this.handleTradeMessage(message);
-    // } else if (message.type === 'orderbook') {
-    //   this.handleOrderBookMessage(message);
-    // }
+      // If the protocol is not "Virtual Curve", skip processing
+      if (
+        axiomMessage.room === 'new_pairs' &&
+        axiomMessage.content &&
+        axiomMessage.content.protocol !== 'Virtual Curve'
+      ) {
+        // this.logger.debug(
+        //   { protocol: axiomMessage.content.protocol },
+        //   '🔍 [AxiomWebSocketService] handleMessage: Skipping non-Virtual Curve protocol',
+        // );
+        return;
+      }
+
+      // Continue processing for Virtual Curve protocols
+      if (axiomMessage.room === 'new_pairs' && axiomMessage.content) {
+        // Extract token address from the message
+        const tokenAddress = axiomMessage.content.token_address;
+        if (tokenAddress) {
+          //sleep 5 seconds
+          await new Promise((resolve) => setTimeout(resolve, 15000));
+          const tokenData = await this.scrapeTokenData(tokenAddress);
+          if (tokenData?.marketCap !== 'Unknown') {
+            this.logger.info(
+              { tokenData },
+              '✅ [AxiomWebSocketService] handleMessage: Successfully retrieved token data',
+            );
+            const twitter = await this.tweetScoutService.getScore(
+              tokenData.launchedBy,
+            );
+
+            this.logger.info(
+              { twitter },
+              '✅ [AxiomWebSocketService] handleMessage: Successfully retrieved twitter info',
+            );
+
+            // Prepare data for TokenProcessorService
+            const processedData = {
+              coin_name: axiomMessage.content.token_name || 'Unknown',
+              coin_ticker: axiomMessage.content.token_ticker || 'Unknown',
+              ca_address: tokenAddress,
+              created_at:
+                axiomMessage.content.created_at || new Date().toISOString(),
+              twitter_handler: tokenData.launchedBy?.replace('@', ''),
+              price: tokenData.price || 'Unknown',
+              marketCap: tokenData.marketCap || 'Unknown',
+              twitter_info: {
+                name: twitter?.top_followers?.[0]?.name || 'Unknown',
+                followers_count: twitter?.followersCount || 0,
+                is_blue_verified: twitter?.followersCount > 10000 || false,
+                score: twitter?.score || '0',
+                fake_percent: twitter?.fake_percent || '0',
+                top_followers: twitter?.top_followers || [],
+              },
+            };
+
+            // Send to token queue for processing and telegram notification
+            await this.tokenQueue.add('process-token-v2', processedData, {
+              attempts: 3,
+              backoff: {
+                type: 'exponential',
+                delay: 1000,
+              },
+            });
+
+            this.logger.info(
+              { tokenAddress },
+              '✅ [AxiomWebSocketService] handleMessage: Added token to processing queue for Telegram notification',
+            );
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        { error, message },
+        '🔴 [AxiomWebSocketService] handleMessage: Error handling message',
+      );
+    }
+  }
+
+  /**
+   * Scrape token data from believe.app
+   * @param tokenAddress The token address to scrape data for
+   * @returns Parsed token data or null if scraping failed
+   */
+  private async scrapeTokenData(
+    tokenAddress: string,
+  ): Promise<BelieveTokenData | null> {
+    try {
+      const url = `https://believe.app/coin/${tokenAddress}`;
+      this.logger.info(
+        { tokenAddress, url },
+        '🔍 [AxiomWebSocketService] scrapeTokenData: Scraping data from believe.app',
+      );
+
+      const response: AxiosResponse = await firstValueFrom(
+        this.httpService.get(url, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
+          },
+        }),
+      );
+
+      // Load the HTML into cheerio
+      const $ = cheerio.load(response.data);
+
+      // Get the page HTML as text
+      const htmlText = $.text();
+
+      // Try to extract each piece of information with multiple patterns
+
+      // Extract "Launched by" - Try different patterns
+      let launchedBy = 'Unknown';
+
+      // First try to find usernames with the "Launched by @..." pattern
+      const launchedByMatch1 = htmlText.match(/Launched by\s*@([\w_]+)/i);
+      if (launchedByMatch1) {
+        launchedBy = `@${launchedByMatch1[1]}`;
+      } else {
+        // If not found, look for any @username in the text
+        const launchedByMatch2 = htmlText.match(/@([\w_]+)/);
+        if (launchedByMatch2) {
+          launchedBy = `@${launchedByMatch2[1]}`;
+        }
+      }
+
+      // Post-processing to remove "View" suffix
+      if (launchedBy !== 'Unknown') {
+        // Check if the username ends with "View" (case insensitive)
+        const viewRegex = /View$/i;
+        if (viewRegex.test(launchedBy)) {
+          // Remove the "View" suffix regardless of its casing
+          launchedBy = launchedBy.replace(viewRegex, '');
+        }
+      }
+
+      // Extract "Created at" - Try different patterns
+      let createdAt = 'Unknown';
+      // Pattern 1: "Xd Xh Xm ago" format
+      const createdAtMatch1 = htmlText.match(/(\d+d\s+\d+h\s+\d+m\s+ago)/i);
+      if (createdAtMatch1) {
+        createdAt = createdAtMatch1[1];
+      } else {
+        // Pattern 2: Just numbers and time units near "Created"
+        const createdAtMatch2 = htmlText.match(
+          /Created[^0-9]*([0-9]+[dhm]\s*[0-9]+[dhm]\s*[0-9]+[dhm])/i,
+        );
+        if (createdAtMatch2) {
+          createdAt = createdAtMatch2[1];
+        }
+      }
+
+      // Extract "Market Cap" - Try different patterns
+      let marketCap = 'Unknown';
+      // Pattern 1: Standard format like "$19.8K" after "Market Cap"
+      const marketCapMatch1 = htmlText.match(
+        /Market\s+Cap\s*\$([0-9.]+[KMB]?)/i,
+      );
+      if (marketCapMatch1) {
+        marketCap = `$${marketCapMatch1[1]}`;
+      } else {
+        // Pattern 2: Look for dollar value nearby
+        const marketCapMatch2 = htmlText.match(
+          /Market\s+Cap[^$]*\$([0-9.]+[KMB]?)/i,
+        );
+        if (marketCapMatch2) {
+          marketCap = `$${marketCapMatch2[1]}`;
+        }
+      }
+
+      // Extract "Price" - Try different patterns
+      let price = 'Unknown';
+      // Pattern 1: Standard price format like "$0.00002" after "Price"
+      const priceMatch1 = htmlText.match(/Price\s*\$([0-9.]+)/i);
+      if (priceMatch1) {
+        price = `$${priceMatch1[1]}`;
+      } else {
+        // Pattern 2: Look for any dollar value with many zeros (likely a token price)
+        const priceMatch2 = htmlText.match(/\$([0-9.]+0{3,}[0-9]*)/);
+        if (priceMatch2) {
+          price = `$${priceMatch2[1]}`;
+        }
+      }
+
+      // Create and return the structured token data object
+      const tokenData: BelieveTokenData = {
+        tokenAddress,
+        launchedBy,
+        createdAt,
+        marketCap,
+        price,
+      };
+
+      // this.logger.info(
+      //   { tokenData },
+      //   '✅ [AxiomWebSocketService] scrapeTokenData: Successfully scraped token data',
+      // );
+
+      return tokenData;
+    } catch (error) {
+      this.logger.error(
+        { error, tokenAddress },
+        '🔴 [AxiomWebSocketService] scrapeTokenData: Error scraping token data',
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Notify believe.app about a new token
+   * @param tokenAddress The token address to notify about
+   */
+  private async notifyBelieveApp(tokenAddress: string): Promise<void> {
+    try {
+      const url = `https://believe.app/coin/${tokenAddress}`;
+      this.logger.info(
+        { tokenAddress, url },
+        '🔍 [AxiomWebSocketService] notifyBelieveApp: Notifying believe.app about new token',
+      );
+
+      const response: AxiosResponse = await firstValueFrom(
+        this.httpService.get(url),
+      );
+
+      this.logger.info(
+        { tokenAddress, status: response.status },
+        '✅ [AxiomWebSocketService] notifyBelieveApp: Successfully notified believe.app',
+      );
+    } catch (error) {
+      this.logger.error(
+        { error, tokenAddress },
+        '🔴 [AxiomWebSocketService] notifyBelieveApp: Error notifying believe.app',
+      );
+    }
   }
 
   // Public methods to interact with the WebSocket service
@@ -225,8 +721,18 @@ export class AxiomWebSocketService implements OnModuleInit, OnModuleDestroy {
     this.logger.info(
       '🔄 [AxiomWebSocketService] reconnect: Forcing reconnection',
     );
-    this.disconnect();
+
+    // Ensure we fully disconnect first
+    if (this.client) {
+      this.disconnect();
+    }
+
+    // Reset reconnect attempts to ensure we can try multiple times
     this.reconnectAttempts = 0;
-    this.connect();
+
+    // Small delay to ensure proper cleanup before reconnection
+    setTimeout(() => {
+      this.connect();
+    }, 1000);
   }
 }

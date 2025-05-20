@@ -15,6 +15,8 @@ import { AxiomWebSocketService } from './services/axiom-websocket.service';
 import { ScheduleService } from './schedulers/schedule.service';
 import { TokenProcessorService } from './processors/token-processor.service';
 import { TelegramBotModule } from './telegram-bot/telegram-bot.module';
+import { HttpModule } from '@nestjs/axios';
+import { TweetScoutService } from './services/tweet-scout.service';
 
 // Provider to check Redis connection
 @Injectable()
@@ -39,6 +41,7 @@ class RedisStatusProvider implements OnModuleInit {
   imports: [
     DatabaseModule,
     TelegramBotModule,
+    HttpModule,
 
     BullModule.forRootAsync({
       imports: [ConfigModule],
@@ -71,10 +74,11 @@ class RedisStatusProvider implements OnModuleInit {
   ],
   controllers: [],
   providers: [
-    RedisStatusProvider, 
-    AxiomWebSocketService, 
+    RedisStatusProvider,
+    AxiomWebSocketService,
     ScheduleService,
-    TokenProcessorService
+    TokenProcessorService,
+    TweetScoutService,
   ],
   exports: [AxiomWebSocketService],
 })

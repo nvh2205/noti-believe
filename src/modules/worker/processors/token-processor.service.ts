@@ -17,7 +17,7 @@ export class TokenProcessorService {
     this.telegramChatId = this.configService.get<string>('telegram.chatId');
   }
 
-  @Process('process-token')
+  @Process('process-token-v2')
   async processToken(job: Job<any>) {
     try {
       const tokenData = job.data;
@@ -73,7 +73,7 @@ export class TokenProcessorService {
         message,
         {
           parse_mode: 'HTML',
-          disable_web_page_preview: false,
+          disable_web_page_preview: true,
         },
       );
 
@@ -132,38 +132,63 @@ export class TokenProcessorService {
   }
 
   private formatTelegramMessage(tokenData: any): string {
+    // Extract Twitter info with fallbacks
     const twitterInfo = tokenData.twitter_info || {};
     const followers = parseInt(twitterInfo.followers_count) || 0;
     const isVerified = twitterInfo.is_blue_verified || false;
+    const twitterName = twitterInfo.name || 'Unknown';
+    const twitterScore = twitterInfo.score || '0';
+    const topFollowers = twitterInfo.top_followers || [];
+    
+    // Extract token info with fallbacks
     const caAddress = tokenData.ca_address || '';
+    const tokenName = tokenData.coin_name || 'Unknown';
+    const tokenTicker = tokenData.coin_ticker || 'Unknown';
+    const twitterHandler = tokenData.twitter_handler || 'Unknown';
+    
+    // Calculate token age
     const tokenAge = this.formatTokenAge(tokenData.created_at);
-    const isNew =
-      tokenAge.includes('min') ||
-      (tokenAge.includes('hour') && parseInt(tokenAge) < 3);
+    const isNew = tokenAge.includes('min') || 
+                 (tokenAge.includes('hour') && parseInt(tokenAge) < 3);
+    
+    // Get risk indicator based on Twitter followers
     const riskIndicator = this.getRiskIndicator(followers, isVerified);
+    
+    // Format fake percentage if available
+    const fakePercent = twitterInfo.fake_percent 
+      ? `(${twitterInfo.fake_percent}% fake)` 
+      : '';
 
-    return `
-<b>🚀 ${isNew ? '🔥 FRESH ' : ''}TOKEN ALERT${isNew ? ' 🔥' : ''} 🚀</b>
+    // Top followers formatted concisely
+    let topFollowersText = '';
+    if (topFollowers && topFollowers.length > 0) {
+      topFollowersText = topFollowers
+        .slice(0, 3)
+        .map(follower => {
+          const twitter = follower.twitter || 'unknown';
+          const name = follower.name || 'Unknown';
+          const score = follower.score || '0';
+          return `@${twitter.replace('@', '')} (${score})`;
+        })
+        .join(' • ');
+    }
 
-<b>💎 Token Info:</b>
-  • <b>Name:</b> <b><i>${tokenData.coin_name}</i></b>
-  • <b>Ticker:</b> <code>${tokenData.coin_ticker}</code>
-  • <b>Created:</b> ${tokenAge}
+    // Price and market cap
+    const priceValue = tokenData.price || 'Unknown';
+    const marketCapValue = tokenData.marketCap || 'Unknown';
 
-<b>🐦 Twitter: ${riskIndicator}</b>
-  • <b>Handle:</b> <a href="https://twitter.com/${tokenData.twitter_handler}">@${tokenData.twitter_handler}</a> ${isVerified ? '✓' : ''}
-  • <b>Name:</b> ${twitterInfo.name || 'N/A'}
-  • <b>Verified:</b> ${isVerified ? '✅ Yes' : '❌ No'}
-  • <b>Followers:</b> ${followers.toLocaleString()} ${followers > 1000 ? '🔥' : ''}
+    // Format compact message in DCA summary style
+    return `<b>🔍 ${isNew ? '🔥 NEW ' : ''}TOKEN ALERT</b>
+🪙 CA: <code>${caAddress}</code> (${tokenName})
+💎 Ticker: ${tokenTicker} • Age: ${tokenAge} ${isNew ? '🆕' : ''}
+💰 Price: ${priceValue} • Market Cap: ${marketCapValue}
 
-<b>🔗 Links:</b>
-  • <b>GMGN:</b> <a href="https://gmgn.ai/sol/token/${caAddress}">View on GMGN Explorer</a>
-  • <b>Trojan:</b> <a href="https://t.me/solana_trojanbot?start=d-oxandrein-${caAddress}">BUY $${tokenData.coin_name}</a>
+🐦 Twitter: @${twitterHandler} ${isVerified ? '✓' : ''} • Score: ${twitterScore} ${riskIndicator}
+👤 Followers: ${followers.toLocaleString()} ${fakePercent} ${followers > 1000 ? '🔥' : ''}
+${topFollowersText ? `👥 Notable Followers: ${topFollowersText}` : ''}
 
-<b>🔑 Contract Address:</b>
-<code>${caAddress}</code>
+🔗 <a href="https://gmgn.ai/sol/token/${caAddress}">Explorer</a> • <a href="https://t.me/solana_trojanbot?start=d-oxandrein-${caAddress}">Trojan</a> • <a href="https://believe.app/coin/${caAddress}">Believe</a>
 
-<i>💡 ${isNew ? 'This token is very new! ' : ''}Always DYOR before investing!</i>
-`;
+${isNew ? '⚠️ This token is very new! Exercise caution. ' : ''}Always DYOR before investing!`;
   }
 }

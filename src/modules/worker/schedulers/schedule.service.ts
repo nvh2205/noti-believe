@@ -41,7 +41,7 @@ export class ScheduleService implements OnApplicationBootstrap {
     }
   }
 
-  @Cron('*/5 * * * * *') // Runs every 2 seconds
+  // @Cron('*/5 * * * * *') // Runs every 2 seconds
   async fetchBelieveSignalTokens() {
     try {
       this.logger.log(
