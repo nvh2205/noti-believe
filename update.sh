@@ -8,9 +8,10 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Starting update process...${NC}"
 
+
 # Step 1: Pull latest code
 echo -e "${YELLOW}Pulling latest code from repository...${NC}"
-if sudo git pull; then
+if git pull; then
     echo -e "${GREEN}Code successfully updated!${NC}"
 else
     echo -e "${RED}Failed to pull latest code. Please check your git configuration.${NC}"

@@ -139,36 +139,38 @@ export class TokenProcessorService {
     const twitterName = twitterInfo.name || 'Unknown';
     const twitterScore = twitterInfo.score || '0';
     const topFollowers = twitterInfo.top_followers || [];
-    
+
     // Extract token info with fallbacks
     const caAddress = tokenData.ca_address || '';
     const tokenName = tokenData.coin_name || 'Unknown';
     const tokenTicker = tokenData.coin_ticker || 'Unknown';
     const twitterHandler = tokenData.twitter_handler || 'Unknown';
-    
+
     // Calculate token age
     const tokenAge = this.formatTokenAge(tokenData.created_at);
-    const isNew = tokenAge.includes('min') || 
-                 (tokenAge.includes('hour') && parseInt(tokenAge) < 3);
-    
+    const isNew =
+      tokenAge.includes('min') ||
+      (tokenAge.includes('hour') && parseInt(tokenAge) < 3);
+
     // Get risk indicator based on Twitter followers
     const riskIndicator = this.getRiskIndicator(followers, isVerified);
-    
+
     // Format fake percentage if available
-    const fakePercent = twitterInfo.fake_percent 
-      ? `(${twitterInfo.fake_percent}% fake)` 
+    const fakePercent = twitterInfo.fake_percent
+      ? `(${twitterInfo.fake_percent}% fake)`
       : '';
 
-    // Top followers formatted concisely
+    // Top followers formatted concisely with links instead of @ symbols
     let topFollowersText = '';
     if (topFollowers && topFollowers.length > 0) {
       topFollowersText = topFollowers
         .slice(0, 3)
-        .map(follower => {
+        .map((follower) => {
           const twitter = follower.twitter || 'unknown';
           const name = follower.name || 'Unknown';
           const score = follower.score || '0';
-          return `@${twitter.replace('@', '')} (${score})`;
+          const twitterHandle = twitter.replace('@', '');
+          return `<a href="https://twitter.com/${twitterHandle}">${twitterHandle}</a> (${score})`;
         })
         .join(' • ');
     }
@@ -177,13 +179,13 @@ export class TokenProcessorService {
     const priceValue = tokenData.price || 'Unknown';
     const marketCapValue = tokenData.marketCap || 'Unknown';
 
-    // Format compact message in DCA summary style
+    // Format compact message in DCA summary style with Twitter link instead of @ symbol
     return `<b>🔍 ${isNew ? '🔥 NEW ' : ''}TOKEN ALERT</b>
 🪙 CA: <code>${caAddress}</code> (${tokenName})
 💎 Ticker: ${tokenTicker} • Age: ${tokenAge} ${isNew ? '🆕' : ''}
 💰 Price: ${priceValue} • Market Cap: ${marketCapValue}
 
-🐦 Twitter: @${twitterHandler} ${isVerified ? '✓' : ''} • Score: ${twitterScore} ${riskIndicator}
+🐦 Twitter: <a href="https://twitter.com/${twitterHandler.replace('@', '')}">${twitterHandler.replace('@', '')}</a> ${isVerified ? '✓' : ''} • Score: ${twitterScore} ${riskIndicator}
 👤 Followers: ${followers.toLocaleString()} ${fakePercent} ${followers > 1000 ? '🔥' : ''}
 ${topFollowersText ? `👥 Notable Followers: ${topFollowersText}` : ''}
 
