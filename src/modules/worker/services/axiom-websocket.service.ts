@@ -14,6 +14,12 @@ import { TweetScoutService } from './tweet-scout.service';
 import { TokenProcessorService } from '../processors/token-processor.service';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { TokenRepository } from '../repositories/token.repository';
+import { AxiomPairInfo } from '../interfaces/axiom-pair-info.interface';
+import { AxiomTokenPrice } from '../interfaces/axiom-token-price.interface';
+import { AxiomTwitterUser } from '../interfaces/axiom-twitter-user.interface';
+import { Token } from '../entities/token.entity';
+import { AxiomApiService } from './axiom-api.service';
 
 // Interfaces for Axiom WebSocket messages
 interface PoolFees {
@@ -153,8 +159,26 @@ export class AxiomWebSocketService
     private readonly httpService: HttpService,
     private readonly tweetScoutService: TweetScoutService,
     private readonly tokenProcessorService: TokenProcessorService,
+    private readonly tokenRepository: TokenRepository,
+    private readonly axiomApiService: AxiomApiService,
     @InjectQueue('token-queue') private readonly tokenQueue: Queue,
-  ) {}
+  ) {
+    // Set up the token refresh callback to update WebSocket service
+    this.axiomApiService.setTokenRefreshCallback((newToken: string) => {
+      this.logger.info(
+        '🔄 [AxiomWebSocketService] Token refreshed by AxiomApiService, updating local token',
+      );
+      this.currentAccessToken = newToken;
+
+      // If there's an active connection, reconnect to apply the new token
+      if (this.isConnected) {
+        this.logger.info(
+          '🔄 [AxiomWebSocketService] Reconnecting to apply new token',
+        );
+        this.reconnect();
+      }
+    });
+  }
 
   onModuleInit() {
     this.refreshAccessToken();
@@ -171,86 +195,23 @@ export class AxiomWebSocketService
     // const tokenData = await this.scrapeTokenData(
     //   'A82xG78RJugg1kvXLn9Jfq3mS2J9MxxiiAhKZpxJKbtT',
     // );
+    // const a = await this.axiomApiService.getPairInfo(
+    //   '3AFzxwxsu8cbMaqWrQ9mq4YfvvBwLvMWF5BVQiLpLd6t',
+    // );
+    // console.log(a, 'a');
   }
 
   private async refreshAccessToken() {
     try {
       this.logger.info(
-        '🔄 [AxiomWebSocketService] refreshAccessToken: Refreshing access token',
+        '🔄 [AxiomWebSocketService] refreshAccessToken: Initiating token refresh via AxiomApiService',
       );
 
-      const response = await firstValueFrom(
-        this.httpService.post(
-          'https://api10.axiom.trade/refresh-access-token',
-          {},
-          {
-            headers: {
-              accept: 'application/json, text/plain, */*',
-              'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
-              'content-length': '0',
-              origin: 'https://axiom.trade',
-              priority: 'u=1, i',
-              referer: 'https://axiom.trade/',
-              'sec-ch-ua':
-                '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-              'sec-ch-ua-mobile': '?0',
-              'sec-ch-ua-platform': '"macOS"',
-              'sec-fetch-dest': 'empty',
-              'sec-fetch-mode': 'cors',
-              'sec-fetch-site': 'same-site',
-              'user-agent':
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-              Cookie: `auth-refresh-token=${this.refreshToken}`,
-            },
-            withCredentials: true,
-          },
-        ),
-      );
+      // Use the AxiomApiService to refresh the token
+      const newToken = await this.axiomApiService.refreshAccessToken();
+      this.currentAccessToken = newToken;
 
-      this.logger.debug(
-        { statusCode: response.status, headers: response.headers },
-        '🔍 [AxiomWebSocketService] refreshAccessToken: Received response',
-      );
-
-      // Extract the new access token from Set-Cookie header
-      const setCookieHeader = response.headers['set-cookie'];
-      if (setCookieHeader && setCookieHeader.length > 0) {
-        this.logger.debug(
-          { setCookieHeader },
-          '🔍 [AxiomWebSocketService] refreshAccessToken: Found Set-Cookie headers',
-        );
-
-        const authTokenCookie = setCookieHeader.find((cookie) =>
-          cookie.startsWith('auth-access-token='),
-        );
-        if (authTokenCookie) {
-          // Extract just the token part
-          const tokenMatch = authTokenCookie.match(/auth-access-token=([^;]+)/);
-          if (tokenMatch && tokenMatch[1]) {
-            this.currentAccessToken = tokenMatch[1];
-            this.logger.info(
-              { tokenLength: this.currentAccessToken.length },
-              '✅ [AxiomWebSocketService] refreshAccessToken: Successfully refreshed access token',
-            );
-
-            // If there's an active connection, reconnect to apply the new token
-            if (this.isConnected) {
-              this.logger.info(
-                '🔄 [AxiomWebSocketService] refreshAccessToken: Reconnecting to apply new token',
-              );
-              this.reconnect();
-            }
-
-            return true;
-          }
-        }
-      }
-
-      this.logger.warn(
-        { response: response.data },
-        '⚠️ [AxiomWebSocketService] refreshAccessToken: Could not extract new access token from response',
-      );
-      return false;
+      return true;
     } catch (error) {
       this.logger.error(
         { error },
@@ -452,61 +413,114 @@ export class AxiomWebSocketService
       }
 
       // Continue processing for Virtual Curve protocols
-      if (axiomMessage.room === 'new_pairs' && axiomMessage.content) {
+      if (
+        axiomMessage.room === 'new_pairs' &&
+        axiomMessage.content &&
+        axiomMessage.content.deployer_address ==
+          '5qWya6UjwWnGVhdSBL3hyZ7B45jbk6Byt1hwd7ohEGXE'
+      ) {
         // Extract token address from the message
         const tokenAddress = axiomMessage.content.token_address;
-        if (tokenAddress) {
-          //sleep 5 seconds
-          await new Promise((resolve) => setTimeout(resolve, 15000));
-          const tokenData = await this.scrapeTokenData(tokenAddress);
-          if (tokenData?.marketCap !== 'Unknown') {
-            this.logger.info(
-              { tokenData },
-              '✅ [AxiomWebSocketService] handleMessage: Successfully retrieved token data',
-            );
-            const twitter = await this.tweetScoutService.getScore(
-              tokenData.launchedBy,
-            );
 
-            this.logger.info(
-              { twitter },
-              '✅ [AxiomWebSocketService] handleMessage: Successfully retrieved twitter info',
-            );
+        //sleep 5 seconds
+        await new Promise((resolve) => setTimeout(resolve, 15000));
 
-            // Prepare data for TokenProcessorService
-            const processedData = {
-              coin_name: axiomMessage.content.token_name || 'Unknown',
-              coin_ticker: axiomMessage.content.token_ticker || 'Unknown',
-              ca_address: tokenAddress,
-              created_at:
-                axiomMessage.content.created_at || new Date().toISOString(),
-              twitter_handler: tokenData.launchedBy?.replace('@', ''),
-              price: tokenData.price || 'Unknown',
-              marketCap: tokenData.marketCap || 'Unknown',
-              twitter_info: {
-                name: twitter?.top_followers?.[0]?.name || 'Unknown',
-                followers_count: twitter?.followersCount || 0,
-                is_blue_verified: twitter?.followersCount > 10000 || false,
-                score: twitter?.score || '0',
-                fake_percent: twitter?.fake_percent || '0',
-                top_followers: twitter?.top_followers || [],
-              },
-            };
+        const [pairInfo, tokenPrice] = await Promise.all([
+          this.axiomApiService.getPairInfo(axiomMessage.content.pair_address),
+          this.axiomApiService.getTokenPrice(axiomMessage.content.pair_address),
+        ]);
 
-            // Send to token queue for processing and telegram notification
-            await this.tokenQueue.add('process-token-v2', processedData, {
-              attempts: 3,
-              backoff: {
-                type: 'exponential',
-                delay: 1000,
-              },
-            });
+        let twitterUsername = '';
+        let tweetId;
+
+        if (pairInfo?.twitter) {
+          if (pairInfo.twitter && pairInfo.twitter.includes('status/')) {
+            const tweetIdMatch = pairInfo.twitter.match(/status\/(\d+)/);
+            if (tweetIdMatch && tweetIdMatch[1]) {
+              tweetId = tweetIdMatch[1];
+            }
+          }
+        }
+
+        const twitterUserInfo =
+          await this.axiomApiService.getTwitterUserInfo(tweetId);
+        twitterUsername = twitterUserInfo?.userName;
+        const isBlueVerified = twitterUserInfo?.isBlueVerified;
+        //sleep 5 seconds
+        if (twitterUsername) {
+          const twitter =
+            await this.tweetScoutService.getScore(twitterUsername);
+
+          this.logger.info(
+            { twitter },
+            '✅ [AxiomWebSocketService] handleMessage: Successfully retrieved twitter info',
+          );
+
+          // Prepare data for TokenProcessorService
+          const processedData = {
+            coin_name: axiomMessage.content.token_name || 'Unknown',
+            coin_ticker: axiomMessage.content.token_ticker || 'Unknown',
+            ca_address: tokenAddress,
+            created_at:
+              axiomMessage.content.created_at || new Date().toISOString(),
+            twitter_handler: twitterUsername,
+            price: tokenPrice?.priceUsd || '0',
+            market_cap: Number(
+              (tokenPrice?.priceUsd * pairInfo.supply || 24000).toFixed(2),
+            ),
+            website: pairInfo?.website,
+            twitter_info: {
+              name: twitter?.top_followers?.[0]?.name || 'Unknown',
+              followers_count: twitter?.followersCount || 0,
+              is_blue_verified: isBlueVerified || false,
+              score: twitter?.score || '0',
+              fake_percent: twitter?.fake_percent || '0',
+              top_followers: twitter?.top_followers,
+            },
+          };
+
+          //save to database
+          try {
+            const tokenEntity = new Token();
+            tokenEntity.coin_name = processedData.coin_name;
+            tokenEntity.coin_ticker = processedData.coin_ticker;
+            tokenEntity.ca_address = processedData.ca_address;
+            tokenEntity.twitter_handler = processedData.twitter_handler;
+            tokenEntity.website = processedData.website;
+            tokenEntity.price = Number(processedData.price);
+            tokenEntity.initial_price = Number(processedData.price); // Set initial price same as current price on creation
+            tokenEntity.market_cap = Number(processedData.market_cap);
+            tokenEntity.initial_market_cap = Number(processedData.market_cap); // Set initial market cap same as current on creation
+            // The twitter_info object should already have the correct structure from processedData
+            tokenEntity.twitter_info = processedData.twitter_info;
+            tokenEntity.pair_address = axiomMessage.content.pair_address;
+
+            await this.tokenRepository.save(tokenEntity);
 
             this.logger.info(
               { tokenAddress },
-              '✅ [AxiomWebSocketService] handleMessage: Added token to processing queue for Telegram notification',
+              '✅ [AxiomWebSocketService] handleMessage: Successfully saved token data to database',
+            );
+          } catch (dbError) {
+            this.logger.error(
+              { error: dbError, tokenAddress },
+              '🔴 [AxiomWebSocketService] handleMessage: Error saving token data to database',
             );
           }
+
+          // Send to token queue for processing and telegram notification
+          await this.tokenQueue.add('process-token-v2', processedData, {
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 1000,
+            },
+          });
+
+          this.logger.info(
+            { tokenAddress },
+            '✅ [AxiomWebSocketService] handleMessage: Added token to processing queue for Telegram notification',
+          );
         }
       }
     } catch (error) {

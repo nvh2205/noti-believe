@@ -17,6 +17,10 @@ import { TokenProcessorService } from './processors/token-processor.service';
 import { TelegramBotModule } from './telegram-bot/telegram-bot.module';
 import { HttpModule } from '@nestjs/axios';
 import { TweetScoutService } from './services/tweet-scout.service';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Token } from './entities/token.entity';
+import { TokenRepository } from './repositories/token.repository';
+import { AxiomApiService } from './services/axiom-api.service';
 
 // Provider to check Redis connection
 @Injectable()
@@ -42,6 +46,7 @@ class RedisStatusProvider implements OnModuleInit {
     DatabaseModule,
     TelegramBotModule,
     HttpModule,
+    TypeOrmModule.forFeature([Token]),
 
     BullModule.forRootAsync({
       imports: [ConfigModule],
@@ -76,9 +81,11 @@ class RedisStatusProvider implements OnModuleInit {
   providers: [
     RedisStatusProvider,
     AxiomWebSocketService,
+    AxiomApiService,
     ScheduleService,
     TokenProcessorService,
     TweetScoutService,
+    TokenRepository,
   ],
   exports: [AxiomWebSocketService],
 })

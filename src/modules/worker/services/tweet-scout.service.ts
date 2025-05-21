@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { AxiosResponse } from 'axios';
 import Redis from 'ioredis';
 import { CustomTwitterScore } from '../../../interfaces/twitter-analytics.interface';
+import axios from 'axios';
 
 export interface TweetUserData {
   id: string;
@@ -68,7 +69,7 @@ export class TweetScoutService implements OnApplicationBootstrap {
   private readonly baseUrlFree =
     'https://app.tweetscout.io/_next/data/jx_Wtu7Z0FsWPreE3bu1b';
   private readonly cfClearance =
-    'yiaXLCQALDKPWzzA.wGIKlKWeab362Udo7aAAy6KPsY-1747379529-1.2.1.1-ufRmZZ7CPXnqDbDDJbxUrbJrdvsrxqXHfGzv_o5MbIsTGp8C6h25WU6wckwPfav8ieNY7QIvNWJcREnQGEFodTeQ0ck6_nKMefS_ucrVoSX1Oio3QoCFvMTC5k55d55A3rXp9dXD6PgVJIv2_OWsUwcC8Pz3rd7tmFEGRtlq2TzAVr0Dbnk6PLOQuO5HLFjxm1Tmwu3g2NLet_VBIVEfUwUUTVab6o3eeVJzQbo28WBFDGCcc_bUnLhqNb5eWd3X5DbPeu58.C3C5E3sadorTTtDJ3NJ1ybzrV2hTN46ut4nFJQVxFTMJuNu37gAeqtc1cWgWXwsCxFKBVEY7M.UxmXS4a05Qiq3qhzGDjfwx2ISV97hlNQv2WfdQ4HLkeIY';
+    'TEV2Z22oLT6jCRxGB3SDK9SHP8o4aqslkRFYv0OggMo-1747831627-1.2.1.1-OTklxWZdckc_25HAnZjt6jQKtHoHph9pp0h8.j5hP_mpgi1VJG5SjqXekGh4kMLxoUIDIKuACNCab8HsObPCWTohM2oWa5WNWViRMe7sr35KF9yYl0DEfjQEX23kVd3FSTCCKLOdFJjBq5blTkfKrCqYRuElrWTBno25cOmjnYPFCNL5gLIe9SeHPLg9uyBi7WjoaayL3A6UW0LSu8vgrE994H6.tdhK3BtvNEz9VLzYTwp_4ZlNxP0yG0PMq3xEmJUSYQNHIIxw8ewOjcZLK3NWppqweXh7NEhlw6HBKDo.8Hrav1F4gFq2TUEE4MuNyTE98TAY1FlllezioBiysw.P2KPMCq2_s5Ziq04pfvoVxkJxRiouyEfOcj5YMS4f';
 
   constructor(
     @InjectPinoLogger(TweetScoutService.name)
@@ -252,26 +253,40 @@ export class TweetScoutService implements OnApplicationBootstrap {
 
       const url = `${this.baseUrlFree}/search.json?q=${username}`;
 
-      const response: AxiosResponse<any> = await firstValueFrom(
-        this.httpService.get(url, {
-          headers: {
-            accept: '*/*',
-            'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
-            cookie: `cf_clearance=${this.cfClearance}; _ga=GA1.1.349222678.1747379538; _ym_uid=17307197866784975; _ym_d=1747379540; _ga_68HC5D2CLK=GS2.1.s1747502702$o2$g0$t1747502702$j0$l0$h0`,
-            priority: 'u=1, i',
-            referer: `https://app.tweetscout.io/search?q=${username}`,
-            'sec-ch-ua':
-              '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"macOS"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'user-agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-          },
-        }),
-      );
+      const response = await axios.get(url, {
+        headers: {
+          accept: '*/*',
+          'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
+          priority: 'u=1, i',
+          referer: `https://app.tweetscout.io/search?q=${username}`,
+          'sec-ch-ua':
+            '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+          'sec-ch-ua-arch': 'arm',
+          'sec-ch-ua-bitness': '64',
+          'sec-ch-ua-full-version': '135.0.7049.96',
+          'sec-ch-ua-full-version-list':
+            '"Google Chrome";v="135.0.7049.96", "Not-A.Brand";v="8.0.0.0", "Chromium";v="135.0.7049.96"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-model': '',
+          'sec-ch-ua-platform': '"macOS"',
+          'sec-ch-ua-platform-version': '15.4.1',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
+          'user-agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+          Cookie: `_ga=GA1.1.349222678.1747379538; _ym_uid=17307197866784975; _ym_d=1747379540; cf_clearance=${this.cfClearance}`,
+        },
+        // Force IPv4
+        family: 4,
+        // Add timeout
+        // Add additional axios configs
+        // maxRedirects: 5,
+        // validateStatus: function (status) {
+        //   return status >= 200 && status < 303; // Accept all 2xx status codes and redirects
+        // },
+        withCredentials: true,
+      });
 
       // Extract data from the full response
       const fullData = response.data;

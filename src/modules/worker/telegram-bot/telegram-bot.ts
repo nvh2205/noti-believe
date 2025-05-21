@@ -22,13 +22,18 @@ export class TelegramBot implements OnApplicationBootstrap {
   name: string;
   public telegramIdStatus: Record<string, number> = {};
 
-  private bot: TelegramBotApi;
+  public bot: TelegramBotApi;
 
   private handlers: Record<string, Handler>;
 
   constructor(private readonly configService: ConfigService) {
     const token = this.configService.get<string>('telegram.token');
-    this.bot = new TelegramBotApi(token, { polling: true });
+    this.bot = new TelegramBotApi(token, {
+      polling: true,
+      request: {
+        family: 4, // Force IPv4 only
+      },
+    });
   }
 
   onApplicationBootstrap() {
@@ -56,6 +61,38 @@ export class TelegramBot implements OnApplicationBootstrap {
         chatId,
         text,
       });
+    }
+  }
+  
+  /**
+   * Edit an existing message
+   * @param chatId Chat ID where the message is
+   * @param messageId Message ID to edit
+   * @param text New text for the message
+   * @param options Message options
+   * @returns Promise with the edited message
+   */
+  async editMessage(
+    chatId: ChatId,
+    messageId: number,
+    text: string,
+    options?: SendMessageOptions,
+  ) {
+    try {
+      return await this.bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: messageId,
+        ...options,
+      });
+    } catch (error) {
+      console.log({
+        msg: '🚀 ~ file: telegram-bot.ts ~ editMessage ~ error:',
+        error: error?.message,
+        chatId,
+        messageId,
+        text,
+      });
+      throw error;
     }
   }
 
@@ -87,6 +124,86 @@ export class TelegramBot implements OnApplicationBootstrap {
       }
       clearTimeout(timeout);
     }, seconds * 1000);
+  }
+
+  /**
+   * Answer a callback query to acknowledge the button press
+   * @param callbackQueryId The ID of the callback query to answer
+   * @param text Optional text to show the user
+   * @param showAlert Whether to show as an alert instead of a notification
+   */
+  async answerCallbackQuery(
+    callbackQueryId: string,
+    text?: string,
+    showAlert: boolean = false,
+  ) {
+    try {
+      await this.bot.answerCallbackQuery(callbackQueryId, {
+        text,
+        show_alert: showAlert,
+      });
+    } catch (error) {
+      console.log('🔴 Error answering callback query:', error?.message);
+    }
+  }
+
+  /**
+   * Handle token action button callbacks (Refresh Token, Insight Analysis)
+   * @param callback Custom callback function to process the token actions
+   */
+  setupTokenActionCallbacks(
+    callback: (
+      action: string,
+      tokenAddress: string,
+      query: any,
+    ) => Promise<void>,
+  ) {
+    this.bot.on('callback_query', async (query) => {
+      const { data } = query;
+
+      // Handle our custom button callbacks for token actions
+      if (
+        data &&
+        (data.startsWith('refresh_token:') ||
+          data.startsWith('insight_analysis:'))
+      ) {
+        const [action, tokenAddress] = data.split(':');
+        if (tokenAddress) {
+          await callback(action, tokenAddress, query);
+        }
+        return;
+      }
+
+      // Continue with existing callback handling
+      let action = data;
+      let parsedData = parserCallbackMessageTelegram(query);
+
+      if (action.startsWith('link_wallet:')) {
+        action = COMMAND_KEYS.LINK_WALLET;
+        parsedData = { ...parsedData, callbackData: query.data };
+      }
+
+      if (this.handlers) {
+        const { cmd: _cmd, params } = parseCommand(action);
+        const handler = this.handlers[_cmd];
+        if (handler) {
+          if (params && (handler as any)?.setConfig) {
+            (handler as any).setConfig(params);
+          }
+          handler
+            .handler(parsedData)
+            .then()
+            .catch((e) => {
+              console.error(e, {
+                file: 'TelegramBot.setupTokenActionCallbacks',
+                text: `handler command ${_cmd} error: `,
+              });
+            });
+        } else {
+          console.log('unknown callback:', { _cmd });
+        }
+      }
+    });
   }
 
   getAvatarUrl(telegramUsername: string) {

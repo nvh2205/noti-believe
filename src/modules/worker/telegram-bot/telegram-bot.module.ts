@@ -51,9 +51,6 @@ export class TelegramBotModule implements OnModuleInit {
   async onModuleInit() {
     const handlers = this.handlerService.getHandlers();
     this.telegramBot.registerHandlers(handlers);
-    // await this.telegramBot.sendMessage('939769871', 'hello', {
-    //   parse_mode: EParseMode.HTML,
-    // });
     await this.telegramBot.start();
   }
 }
